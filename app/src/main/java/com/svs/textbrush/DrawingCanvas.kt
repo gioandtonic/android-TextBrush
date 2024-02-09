@@ -6,7 +6,13 @@ import android.text.TextPaint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -14,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -21,7 +28,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -33,6 +39,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.svs.textbrush.ui.theme.TextBrushTheme
 import kotlin.math.PI
@@ -52,101 +59,118 @@ fun DrawingCanvas() {
     val paint = configurePaintFromTextStyle(textStyle)
     val letterSpacingPx =
         if ((textStyle.letterSpacing.value * LocalDensity.current.density).isNaN()) 0f else textStyle.letterSpacing.value * LocalDensity.current.density
+    Box(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(remember { MutableInteractionSource() }) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        // Start a new path or subpath
+                        points = listOf(offset)
+                    }, onDrag = { change, _ ->
+                        change.consume()
+                        val pointsFromHistory = change.historical
+                            .map { it.position }
+                            .toTypedArray()
+                        val newPoints = listOf(*pointsFromHistory, change.position)
+                        points = points + newPoints
+                    }, onDragEnd = {
+                        if (points.isNotEmpty()) {
+                            val path = Path().apply {
+                                val firstPoint = points.first()
+                                val remaining = points.subList(1, points.size - 1)
 
-    Canvas(modifier = Modifier
-        .fillMaxSize()
-        .pointerInput(remember { MutableInteractionSource() }) {
-            detectDragGestures(
-                onDragStart = { offset ->
-                    // Start a new path or subpath
-                    points = listOf(offset)
-                }, onDrag = { change, _ ->
-                    change.consume()
-                    val pointsFromHistory = change.historical
-                        .map { it.position }
-                        .toTypedArray()
-                    val newPoints = listOf(*pointsFromHistory, change.position)
-                    points = points + newPoints
-                }, onDragEnd = {
-                    if (points.isNotEmpty()) {
-                        val path = Path().apply {
-                            val firstPoint = points.first()
-                            val remaining = points.subList(1, points.size - 1)
+                                moveTo(firstPoint.x, firstPoint.y)
+                                remaining.forEach {
+                                    lineTo(it.x, it.y)
+                                }
+                            }
+                            pathsSaved.add(path)
+                        }
+                    })
+            }) {
+            // Draw the path
+            pathsSaved.forEach { path ->
+                //Uncomment this to verify the placement of text across the path
+                //drawPath(path, color = Color.Black, style = Stroke(width = 2f))
 
-                            moveTo(firstPoint.x, firstPoint.y)
-                            remaining.forEach {
-                                lineTo(it.x, it.y)
+                val pathMeasure = PathMeasure()
+                pathMeasure.setPath(path, false)
+                val pathLength = pathMeasure.length
+
+                var currentPathPosition = 0f
+                val drawTimes = getTextDrawTimes(textToDraw, textSizePx, letterSpacingPx)
+
+                for (i in 1..drawTimes) {
+                    var prevPosition = Offset.Unspecified
+
+                    textToDraw.forEach innerLoop@{
+                        if (currentPathPosition >= pathLength)
+                            return@innerLoop
+                        val position = pathMeasure.getPosition(currentPathPosition)
+
+
+                        currentPathPosition += (textSizePx + letterSpacingPx)
+                        val nextPosition = pathMeasure.getPosition(currentPathPosition)
+                        val isFirst = prevPosition == Offset.Unspecified
+                        val isLast =
+                            nextPosition == Offset.Unspecified && position != Offset.Unspecified
+
+                        //calculate tangent
+                        val firstPoint: Offset
+                        val lastPoint: Offset
+
+                        when {
+                            isFirst -> {
+                                firstPoint = position
+                                lastPoint = nextPosition
+                            }
+
+                            isLast -> {
+                                firstPoint = prevPosition
+                                lastPoint = position
+                            }
+
+                            else -> {
+                                firstPoint = prevPosition
+                                lastPoint = nextPosition
                             }
                         }
-                        pathsSaved.add(path)
+
+                        val tangent = calculateTangent(Pair(firstPoint, lastPoint))
+
+                        drawChar(
+                            char = it,
+                            charPosition = tangent + position,
+                            charRotation = calculateRotationAngle(tangent).toFloat(),
+                            paint = paint
+                        )
+
+                        prevPosition = position
                     }
-                })
-        }) {
-        // Draw the path
-        pathsSaved.forEach { path ->
-            drawPath(path, color = Color.Black, style = Stroke(width = 2f))
-
-            val pathMeasure = PathMeasure()
-            pathMeasure.setPath(path, false)
-            val pathLength = pathMeasure.length
-
-            var currentPathPosition = 0f
-            val drawTimes = getTextDrawTimes(textToDraw, textSizePx, letterSpacingPx)
-
-            for (i in 1..drawTimes) {
-                var prevPosition = Offset.Unspecified
-
-                textToDraw.forEach innerLoop@{
-                    if (currentPathPosition >= pathLength)
-                        return@innerLoop
-                    val position = pathMeasure.getPosition(currentPathPosition)
-
-
-                    currentPathPosition += (textSizePx + letterSpacingPx)
-                    val nextPosition = pathMeasure.getPosition(currentPathPosition)
-                    val isFirst = prevPosition == Offset.Unspecified
-                    val isLast =
-                        nextPosition == Offset.Unspecified && position != Offset.Unspecified
-
-                    //calculate tangent
-                    val firstPoint: Offset
-                    val lastPoint: Offset
-
-                    when {
-                        isFirst -> {
-                            firstPoint = position
-                            lastPoint = nextPosition
-                        }
-
-                        isLast -> {
-                            firstPoint = prevPosition
-                            lastPoint = position
-                        }
-
-                        else -> {
-                            firstPoint = prevPosition
-                            lastPoint = nextPosition
-                        }
-                    }
-
-                    val tangent = calculateTangent(Pair(firstPoint, lastPoint))
-
-                    drawChar(
-                        char = it,
-                        charPosition = tangent + position,
-                        charRotation = calculateRotationAngle(tangent).toFloat(),
-                        paint = paint
-                    )
-
-                    prevPosition = position
                 }
             }
+        }
+
+        Button(
+            onClick = {
+                removeLast(pathsSaved)
+            },
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(5.dp)// Aligns the button to the bottom-end corner
+        ) {
+            Icon(
+                imageVector = Icons.Filled.ArrowBack, // Use the appropriate icon
+                contentDescription = "Undo", // Provide a content description for accessibility
+                modifier = Modifier // Apply any required Modifier
+            )
         }
     }
 }
 
 fun removeLast(paths: SnapshotStateList<Path>) {
-    paths.removeLast()
+    if (paths.isNotEmpty())
+        paths.removeLast()
 }
 
 fun calculateRotationAngle(tangent: Offset): Double {
