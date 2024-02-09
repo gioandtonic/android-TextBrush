@@ -4,10 +4,12 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.TextPaint
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -32,7 +34,9 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -53,13 +57,23 @@ fun DrawingCanvas() {
     // State to hold the drawing path
     var points by remember { mutableStateOf<List<Offset>>(emptyList()) }
     val pathsSaved = remember { mutableStateListOf<Path>() }
-    val textStyle = TextStyle.Default.copy(color = Color.Red, fontSize = 24.sp)
+    val textStyle = TextStyle.Default.copy(color = Color.White, fontSize = 24.sp)
     val textSizePx = textStyle.fontSize.value * LocalDensity.current.density
     val textToDraw = "Text Brush ".toCharArray()
     val paint = configurePaintFromTextStyle(textStyle)
     val letterSpacingPx =
-        if ((textStyle.letterSpacing.value * LocalDensity.current.density).isNaN()) 0f else textStyle.letterSpacing.value * LocalDensity.current.density
+        if ((textStyle.letterSpacing.value * LocalDensity.current.density).isNaN()) 0f
+        else
+            textStyle.letterSpacing.value * LocalDensity.current.density
+    val imagePainter = painterResource(id = R.drawable.background)
+
     Box(modifier = Modifier.fillMaxSize()) {
+        Image(
+            painter = imagePainter, contentDescription = "Background",
+            modifier = Modifier.fillMaxWidth()
+                .align(Alignment.Center),
+            contentScale = ContentScale.FillWidth
+        )
         Canvas(modifier = Modifier
             .fillMaxSize()
             .pointerInput(remember { MutableInteractionSource() }) {
@@ -156,7 +170,8 @@ fun DrawingCanvas() {
             onClick = {
                 removeLast(pathsSaved)
             },
-            modifier = Modifier.align(Alignment.BottomEnd)
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
                 .padding(5.dp)// Aligns the button to the bottom-end corner
         ) {
             Icon(
